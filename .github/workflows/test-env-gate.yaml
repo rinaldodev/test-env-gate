@@ -8,45 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  check-trust:
-    runs-on: ubuntu-latest
-    outputs:
-      is-trusted: ${{ steps.check.outputs.trusted }}
-    steps:
-      - id: check
-        run: |
-          echo "author_association=${{ github.event.pull_request.author_association }}"
-          if [[ "${{ github.event.pull_request.author_association }}" =~ ^(OWNER|MEMBER|COLLABORATOR)$ ]]; then
-            echo "trusted=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "trusted=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  e2e-trusted:
-    needs: check-trust
-    if: needs.check-trust.outputs.is-trusted == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Trusted contributor — ran without approval"
-
   e2e-untrusted:
-    needs: check-trust
-    if: needs.check-trust.outputs.is-trusted != 'true'
     runs-on: ubuntu-latest
     environment: requires-approval
     steps:
-      - run: echo "External contributor — ran AFTER approval"
-
-  result:
-    needs: [e2e-trusted, e2e-untrusted]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "trusted=${{ needs.e2e-trusted.result }}"
-          echo "untrusted=${{ needs.e2e-untrusted.result }}"
-          if [[ "${{ needs.e2e-trusted.result }}" == "success" || "${{ needs.e2e-untrusted.result }}" == "success" ]]; then
-            echo "PASS"
-          else
-            echo "FAIL" && exit 1
-          fi
+      - run: echo "Ran AFTER approval"
