@@ -1,0 +1,62 @@
+name: Test Skip Prior Successful Run
+
+on:
+  pull_request_target:
+    types: [opened, labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  e2e-untrusted:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check authorization
+        env:
+          AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+          EVENT_ACTION: ${{ github.event.action }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          HAS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'run-xks-e2e') }}
+        run: |
+          TRUSTED_BOTS=("odh-release-bot[bot]" "jira-autofix[bot]" "dependabot[bot]")
+          if [[ "$AUTHOR_ASSOCIATION" =~ ^(OWNER|MEMBER|COLLABORATOR)$ ]]; then
+            echo "Trusted contributor — running automatically"
+            exit 0
+          fi
+          for bot in "${TRUSTED_BOTS[@]}"; do
+            if [[ "$AUTHOR_LOGIN" == "$bot" ]]; then
+              echo "Trusted bot — running automatically"
+              exit 0
+            fi
+          done
+          if [[ "$EVENT_ACTION" == "labeled" && ( "$LABEL_NAME" == "lgtm" || "$LABEL_NAME" == "approved" ) ]]; then
+            echo "Reviewer approval ($LABEL_NAME) — running automatically"
+            exit 0
+          fi
+          if [[ "$HAS_LABEL" == "true" ]]; then
+            echo "External contributor — approved via label"
+            exit 0
+          fi
+          echo "::error::e2e required. A maintainer must add the 'run-xks-e2e' label after reviewing the code."
+          exit 1
+
+      - name: Check for a prior successful run
+        id: prior-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          PRIOR_SUCCESS_COUNT=$(gh api "repos/${{ github.repository }}/actions/workflows/test-skip-prior-run.yaml/runs?head_sha=${HEAD_SHA}&status=success" \
+            --jq "[.workflow_runs[] | select(.id != ${{ github.run_id }})] | length")
+          if [[ "$PRIOR_SUCCESS_COUNT" -gt 0 ]]; then
+            echo "A run for commit $HEAD_SHA already succeeded. Skipping this rerun, there's no code change to test."
+            echo "already_passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run e2e tests
+        if: steps.prior-run.outputs.already_passed != 'true'
+        run: echo "Ran the e2e stand-in after approval, no prior success found for this commit"
