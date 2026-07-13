@@ -1,3 +1,3 @@
 # test-env-gate
 
-trigger: exercise skip-prior-run workflow
+trigger: exercise skip-prior-run workflowsecond trigger
